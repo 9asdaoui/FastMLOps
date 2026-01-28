@@ -16,7 +16,9 @@ services:
       --port 5000
 
   api:
-    build: .
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: fastapi_api
     ports:
       - "8000:8000"
@@ -33,7 +35,7 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
     depends_on:
       - api
 
