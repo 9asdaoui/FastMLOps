@@ -1,6 +1,5 @@
 import mlflow
 import mlflow.sklearn
-from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
@@ -22,6 +21,9 @@ from sklearn.metrics import (
     recall_score,
     f1_score,
 )
+from data_preprocessing import clean_data
+from clustering import cluster
+
 
 # Set experiment name
 experiment_name = "risk_diabet"
@@ -30,8 +32,12 @@ experiment_name = "risk_diabet"
 mlflow.set_experiment(experiment_name)
 
 
+##### Load data
+df_raw = pd.read_csv("../data/raw_data.csv")
+df_clean = clean_data(df_raw)
+df = cluster(df_clean)
+
 ##### Define target y (risk_category) and features X.
-df = pd.read_csv("./data/clustered_data.csv")
 y = df["Cluster"]
 X = df.drop(columns=["Cluster", "risk_category"])
 
@@ -116,11 +122,13 @@ for name, details in models.items():
         mlflow.log_metric("cv_std_accuracy", np.std(cv_scores))
         mlflow.log_metric("cv_mean_accuracy", cv_mean)
 
-        # Save model as artifact
-        mlflow.sklearn.save_model(model, 'models/' + name)
-        mlflow.log_artifact('models/' + name)
+        # Log the model
+        mlflow.sklearn.log_model(
+            sk_model=model,
+            name=f"{name}_logged_model"  # This makes it a First-Class LoggedModel
+        )
 
-         # Track best model
+        # Track best model
         if acc > best_acc:
             best_acc = acc
             best_model = model
@@ -131,21 +139,15 @@ for name, details in models.items():
 
 # Register only the best model
 if best_model is not None:
-    mlflow.sklearn.log_model(
+    model_info = mlflow.sklearn.log_model(
         sk_model=best_model,
         name="best_model",
         registered_model_name="BestRiskDiabetModel"
     )
 
+client = mlflow.tracking.MlflowClient()
+# Instead of 'Production', we use a 'champion' alias
+client.set_registered_model_alias("BestRiskDiabetModel", "champion", 1)
 
-from mlflow.tracking import MlflowClient
 
-client = MlflowClient()
-client.transition_model_version_stage(
-    name="BestRiskDiabetModel",
-    version=1,
-    stage="Production",
-    archive_existing_versions=True
-)
-
-# model = mlflow.pyfunc.load_model("models:/BestRiskDiabetModel/Production")
+# model = mlflow.pyfunc.load_model("models:/BestRiskDiabetModel@champion")
