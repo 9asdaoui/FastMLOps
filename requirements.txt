@@ -8,3 +8,5 @@ numpy
 prometheus-client
 psutil
 python-dotenv
+imblearn
+xgboost
