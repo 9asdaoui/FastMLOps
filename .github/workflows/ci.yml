@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  code-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      - name: Install linters
+        run: pip install flake8
+      
+      - name: Check code quality
+        run: flake8 src/ --max-line-length=120 --ignore=E501,W503,F401
+
+  data-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      - name: Install pandas
+        run: pip install pandas
+      
+      - name: Validate data quality
+        run: |
+          python -c "
+          import pandas as pd
+          df = pd.read_csv('src/data/raw_data.csv')
+          assert len(df) > 100, 'Not enough data'
+          required = ['Glucose', 'BloodPressure', 'BMI', 'Age']
+          for col in required:
+              assert col in df.columns, f'Missing {col}'
+          print(f'Data validation passed: {len(df)} rows')
+          "
+
+  model-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: pip install pandas numpy scikit-learn
+      
+      - name: Validate model performance
+        run: |
+          python -c "
+          import pandas as pd
+          import numpy as np
+          from sklearn.model_selection import train_test_split
+          from sklearn.ensemble import RandomForestClassifier
+          from sklearn.metrics import accuracy_score
+          from sklearn.impute import SimpleImputer
+          
+          df = pd.read_csv('src/data/raw_data.csv')
+          df = df.drop(columns=['Unnamed: 0'], errors='ignore')
+          df = df.replace(0, np.nan)
+          
+          imputer = SimpleImputer(strategy='mean')
+          df_imputed = pd.DataFrame(imputer.fit_transform(df), columns=df.columns)
+          
+          y = (df_imputed['Glucose'] > df_imputed['Glucose'].median()).astype(int)
+          X = df_imputed.drop(columns=['Glucose'])
+          
+          X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+          model = RandomForestClassifier(random_state=42)
+          model.fit(X_train, y_train)
+          
+          acc = accuracy_score(y_test, model.predict(X_test))
+          assert acc > 0.6, f'Accuracy {acc:.2f} below 0.6'
+          print(f'Model validation passed: accuracy={acc:.2f}')
+          "
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [code-quality, data-validation, model-validation]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Build Docker image
+        run: docker build -f docker/Dockerfile -t fastmlops:test .
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          pip install pytest httpx
+          pip install -r requirements.txt
+      
+      - name: Run tests
+        run: pytest tests/ -v
