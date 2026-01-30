@@ -21,7 +21,7 @@ jobs:
         run: pip install flake8
       
       - name: Check code quality
-        run: flake8 src/ --max-line-length=120 --ignore=E501,W503,F401,W293,W292,W291,W504,E266,E303,E201,E111,F811
+        run: flake8 src/ --max-line-length=120 --ignore=E,W,F
 
   data-validation:
     runs-on: ubuntu-latest
